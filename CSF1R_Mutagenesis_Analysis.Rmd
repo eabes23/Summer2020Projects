@@ -23,48 +23,45 @@ For now, use their data with 300bp reads as example data, it is similar enough t
 Experiment: Use error prone DNA polymerase to amplify parts of CSF1R gene with random mutations.
 Goals of Analysis: Obtain the mutation rate, and the uniformity of the mutation rate across a string of DNA read.
 
-Good luck!
-
 ```{r setup, include=FALSE}
-#We install the data2 package from Bioconductor according to the directions on the Bioconductor website
-if (!requireNamespace("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-BiocManager::install("dada2", version = "3.11")
-install.packages("dada2")
 library(dada2); packageVersion("dada2")
-```
-
-```{r}
 library(tidyverse)
-BiocManager::install("Biostrings")
 library(Biostrings) 
+#don't include the install code in a notebook, instead just run it once in the console
 ```
 
-
 ```{r}
-"/Users/ethan_23/Documents/DNA_Seq_Data/" -> path
+#"/Users/ethan_23/Documents/DNA_Seq_Data/" -> path
+path <- "/Users/grahampeet/Desktop/Bennett\ Lab/Bennett-Projects/epPCR_example_data/"
 
-  fnFs <- sort(list.files(path, pattern="_R1_001.fastq", full.names = TRUE))
-  fnRs <- sort(list.files(path, pattern="_R2_001.fastq", full.names = TRUE))
-  sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1)
-  plotQualityProfile(fnFs[1:2])
-  plotQualityProfile(fnRs[1:2])
+fnFs <- sort(list.files(path, pattern = "_R1_001.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern = "_R2_001.fastq", full.names = TRUE))
+  sample.names <- sapply(
+    strsplit(
+      basename(fnFs), "_"), `[`, 1)
 
+plotQualityProfile(fnFs[1:2])
+plotQualityProfile(fnRs[1:2])
 ```
 
 ```{r}
 path2 <- "/Users/ethan_23/Desktop/CSF1R_Seq"
+
 filtFs <- file.path(path2, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
 filtRs <- file.path(path2, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+
 names(filtFs) <- sample.names
 names(filtRs) <- sample.names
 
 #Here we have a function that filters outlying reads and can truncate the region of the genome to exclude regions where the data has poor quality.
-out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(0,0),
-              maxN=0, maxEE=c(Inf,Inf), truncQ=2, rm.phix=TRUE,
-              compress=TRUE, multithread=TRUE)
-
-
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, 
+                     truncLen = c(0, 0),
+                     maxN = 0, 
+                     maxEE = c(Inf, Inf), 
+                     truncQ = 2, 
+                     rm.phix = T,
+                     compress = T, 
+                     multithread = T)
 
 #On Windows set multithread=FALSE
 head(out)
