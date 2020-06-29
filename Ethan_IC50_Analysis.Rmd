@@ -1,0 +1,142 @@
+---
+title: "Ethan IC50 Analysis"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r Load dependecies, message=F}
+library(tidyverse)
+library(drc)
+library(nplr)
+library(stargazer)
+```
+
+```{r Read, Reduce, and Summarize Data, message=F}
+#scaling <- function(x, ...){x}
+#scaling <- function(x, ...){(x - min(x, ...)) / (max(x, ...) - min(x, ...))}
+
+scaling <- function(conc, value){
+  cbind(conc, value) %>%
+    as_tibble() %>%
+    filter(conc < 2) %>% 
+    dplyr::select(value) %>%
+    data.matrix() %>%
+    mean() 
+  }
+
+#Main
+"/Users/grahampeet/Desktop/Bennett\ Lab/BaF3_Wave_1/Hour_72" %>% 
+  list.files(full.names = T) %>%
+  as.list() %>%
+  map(read_csv) %>%
+  bind_rows(.id = "Origin") %>%
+  filter(!.$Compound %in% c("hCSF1", "mCSF1")) %>% #remove ligand response assays
+  #filter(.$Concentration < 5000) %>%
+  group_by(Origin, Compound, Hour, Species, Variant) %>% 
+  mutate(Scaled_Value = Value / scaling(conc = Concentration,
+                                value = Value)) %>% 
+  #group_by(Origin, Compound, Species, Hour, Variant, Concentration) %>%
+  #summarise(Mean_Technical = mean(Scaled_Value)) %>%
+  group_by(Compound, Species, Hour, Variant, Concentration) %>%
+  summarise(Mean_Biological = mean(Scaled_Value),
+            Upper_Bound = pluck(Rmisc::STDERR(Scaled_Value), column = 1), 
+            Lower_Bound = pluck(Rmisc::STDERR(Scaled_Value), column = 3)) -> inhibitor_data
+print(inhibitor_data)
+```
+
+
+```{r Inhibitor Plots, message=F}
+inhibitor_data %>% 
+  ggplot(aes(x = Concentration, y = Mean_Biological, color = Variant)) + 
+  stat_smooth(method = "drm",
+              method.args = list(
+              fct = LL2.5(names = c("hill", "min_value", "max_value", "ec_50", "extra"))),
+              se = F) +
+  geom_errorbar(mapping = aes(ymin = Lower_Bound, 
+                              ymax = Upper_Bound, width= .1)) +
+  facet_grid(rows = vars(Species), cols = vars(Compound)) +
+  theme_linedraw() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(size = 8),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  scale_x_log10() + 
+  labs(title = "EC50 Plots, Scaled to Lowest Dose", 
+       x = "Concentration Inhibitor (nM)", 
+       y = "Cell Survival")
+```
+
+```{r Iterative NPLR, message=F, error=F, echo=F}
+"/Users/grahampeet/Desktop/Bennett\ Lab/BaF3_Wave_1/Hour_72" %>% 
+  list.files(full.names = T) %>%
+  as.list() %>%
+  map(read_csv) %>%
+  bind_rows(.id = "Origin") %>%
+  filter(!.$Compound %in% c("hCSF1", "mCSF1")) %>% #remove ligand response assays
+  group_by(Origin, Compound, Hour, Species, Variant) %>% 
+  mutate(Scaled_Value = Value / scaling(conc = Concentration,
+                                value = Value)) %>% 
+  group_by(Origin, Compound, Species, Hour, Variant, Concentration) %>%
+  summarise(Mean_Technical = mean(Scaled_Value)) %>%
+  group_by(Compound, Species, Hour, Variant) %>%
+  group_split() %>%
+  map(~ cbind(.[1, 2:5], getEstimates(nplr(x = .$Concentration, 
+                                           y = .$Mean_Technical, 
+                                           useLog = T), 
+                                      targets = 0.5))) %>%
+  reduce(rbind) -> EC50_summary
+head(EC50_summary)
+```
+
+```{r results='asis'}
+EC50_summary %>%
+  stargazer(summary = F, title = "EC50 Values", header = F, type = "latex")
+```
+
+```{r Ligand Data, message=F}
+scaling <- function(conc, value){
+  cbind(conc, value) %>%
+    as_tibble() %>%
+    filter(conc == 200) %>% 
+    dplyr::select(value) %>%
+    data.matrix() %>%
+    mean() 
+  }
+
+"/Users/grahampeet/Desktop/Bennett\ Lab/BaF3_Wave_1/Hour_72" %>% 
+  list.files(full.names = T) %>%
+  as.list() %>%
+  map(read_csv) %>%
+  bind_rows(.id = "Origin") %>%
+  filter(.$Compound %in% c("hCSF1", "mCSF1")) %>% #remove ligand response assays
+  group_by(Origin, Compound, Hour, Species, Variant) %>% 
+  mutate(Scaled_Value = Value / scaling(conc = Concentration,
+                                value = Value)) %>% 
+  #group_by(Origin, Compound, Species, Hour, Variant, Concentration) %>%
+  #summarise(Mean_Technical = mean(Scaled_Value)) %>%
+  group_by(Compound, Species, Hour, Variant, Concentration) %>%
+  summarise(Mean_Biological = mean(Scaled_Value),
+            Upper_Bound = pluck(Rmisc::STDERR(Scaled_Value), column = 1), 
+            Lower_Bound = pluck(Rmisc::STDERR(Scaled_Value), column = 3)) -> ligand_data
+print(ligand_data)
+```
+
+```{r Ligand plots}
+ligand_data %>% 
+  ggplot(aes(x = Concentration, y = Mean_Biological, color = Variant)) + 
+  geom_smooth(se = F) +
+  geom_errorbar(mapping = aes(ymin = Lower_Bound, 
+                              ymax = Upper_Bound, width = .1)) +
+  facet_grid(rows = vars(Species), cols = vars(Compound)) +
+  theme_linedraw() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(size = 8),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  scale_x_log10() + #I added this, now the X axis is in readable values
+  labs(title = "CSF1R Variant Ligand Response", 
+       x = "Conc. CSF1 (nM)", 
+       y = "Cell Survival")
+```
+
