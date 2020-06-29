@@ -31,7 +31,7 @@ library(Biostrings)
 ```
 
 ```{r}
-#"/Users/ethan_23/Documents/DNA_Seq_Data/" -> path
+#"/Users/ethan_23/Documents/DNA_Seq_Data/" -> path #I use left to right flow only for the output of pipes
 path <- "/Users/grahampeet/Desktop/Bennett\ Lab/Bennett-Projects/epPCR_example_data/"
 
 fnFs <- sort(list.files(path, pattern = "_R1_001.fastq", full.names = TRUE))
@@ -47,7 +47,7 @@ plotQualityProfile(fnRs[1:2])
 ```{r}
 path2 <- "/Users/ethan_23/Desktop/CSF1R_Seq"
 
-filtFs <- file.path(path2, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtFs <- file.path(path2, "filtered", paste0(sample.names, "_F_filt.fastq.gz")) 
 filtRs <- file.path(path2, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
 
 names(filtFs) <- sample.names
@@ -62,41 +62,41 @@ out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs,
                      rm.phix = T,
                      compress = T, 
                      multithread = T)
-
-#On Windows set multithread=FALSE
 head(out)
 ```
 
 ```{r}
-errF <- learnErrors(filtFs, multithread=TRUE)
-errR <- learnErrors(filtRs, multithread=TRUE)
+errF <- learnErrors(filtFs, multithread = T)
+errR <- learnErrors(filtRs, multithread = T)
 
-InferenceFs <- dada(filtFs, err=errF, multithread=TRUE)
-InferenceRs <- dada(filtRs, err=errR, multithread=TRUE)
+InferenceFs <- dada(filtFs, err = errF, multithread = T)
+InferenceRs <- dada(filtRs, err = errR, multithread = T)
 
-plotErrors(errF, nominalQ=TRUE)
-plotErrors(errR, nominalQ=TRUE)
+plotErrors(errF, nominalQ = T)
+plotErrors(errR, nominalQ = T)
 
 InferenceFs[[1]]
+
+#You know what I'm gonna say...try to turn this whole first portion into a piped operation. You may need 2 pipes or something. That's fine of course. You can use purrr::walk to print your plots without breaking the pipe
 ```
 
 
 ```{r}
-  InferenceFs %>%
+InferenceFs %>%
   map(as.data.frame) %>%
   bind_rows(.id = "Origin") %>%
   cbind(., start = 0, end = 290) -> data
   colnames(data) <- c("Origin", "Sequence", "Start", "End")
   write.csv(data, "Sequence_CSF1R_Fs.csv")
   
-  InferenceRs %>%
+InferenceRs %>%
   map(as.data.frame) %>%
   bind_rows(.id = "Origin") %>%
   cbind(., start = 0, end = 290) -> data
   colnames(data) <- c("Origin", "Sequence", "Start", "End")
   write.csv(data, "Sequence_CSF1R_Rs.csv")
   
-  
+#Great! Now bind these into a list and make it just one pipe
 ```
 
 
@@ -111,16 +111,16 @@ get_mut <- function(seq, ref_seq) {
     y <- substr(seq, i, i)
       if (x != y) {
         ans <- paste(toString(i), ":", x, ">", y, sep = "")
-        return (ans)}
+        return(ans)}
   }
 }
 
 mut_finder <- function(seq, ref_seq) {
-  if (str_length(seq) == str_length(ref_seq)){
-    if (seq == ref_seq){
-      return (ref_seq)}
-    else{ 
-      return (get_mut(seq, ref_seq))}
+  if (str_length(seq) == str_length(ref_seq)) {
+    if (seq == ref_seq) {
+      return(ref_seq)}
+    else { 
+      return(get_mut(seq, ref_seq))}
   }
 }
 
@@ -129,17 +129,13 @@ mut_finder <- function(seq, ref_seq) {
 
 ```{r}
 df300_Fs[1, "Sequence"] %>%
-toString(first_seq) %>%
-as.matrix(strsplit("")) -> refseq_split
+  toString(first_seq) %>%
+  as.matrix(strsplit("")) -> refseq_split
 
 df300_Fs[2, "Sequence"] %>%
-toString(first_seq) %>%
-as.matrix(strsplit("")) -> seq_split
+  toString(first_seq) %>%
+  as.matrix(strsplit("")) -> seq_split
 
 mut_finder(seq_split, refseq_split)
-
-
 ```
 
-
-```{r}
