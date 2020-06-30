@@ -45,7 +45,7 @@ plotQualityProfile(fnRs[1:2])
 ```
 
 ```{r}
-path2 <- "/Users/ethan_23/Desktop/CSF1R_Seq"
+path2 <- "/Users/grahampeet/Desktop/CSF1R_Seq"
 
 filtFs <- file.path(path2, "filtered", paste0(sample.names, "_F_filt.fastq.gz")) 
 filtRs <- file.path(path2, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
@@ -55,14 +55,16 @@ names(filtRs) <- sample.names
 
 #Here we have a function that filters outlying reads and can truncate the region of the genome to exclude regions where the data has poor quality.
 out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, 
-                     truncLen = c(0, 0),
-                     maxN = 0, 
-                     maxEE = c(Inf, Inf), 
-                     truncQ = 2, 
-                     rm.phix = T,
-                     compress = T, 
+                     #truncLen = c(0, 0),
+                     #maxN = 0, default
+                     #maxEE = c(Inf, Inf), 
+                     #truncQ = 2, 
+                     #rm.phix = T,
+                     #compress = T, remove all defults
                      multithread = T)
-head(out)
+head(out) 
+
+#something to consider doing in cases like this is to find a way to create a small but representative sample of the data so you can write/debug without waiting for your code to run
 ```
 
 ```{r}
@@ -78,6 +80,8 @@ plotErrors(errR, nominalQ = T)
 InferenceFs[[1]]
 
 #You know what I'm gonna say...try to turn this whole first portion into a piped operation. You may need 2 pipes or something. That's fine of course. You can use purrr::walk to print your plots without breaking the pipe
+
+#I think you will want to merge the paired reads before moving forward
 ```
 
 
@@ -86,15 +90,17 @@ InferenceFs %>%
   map(as.data.frame) %>%
   bind_rows(.id = "Origin") %>%
   cbind(., start = 0, end = 290) -> data
-  colnames(data) <- c("Origin", "Sequence", "Start", "End")
-  write.csv(data, "Sequence_CSF1R_Fs.csv")
+  
+colnames(data) <- c("Origin", "Sequence", "Start", "End")
+write.csv(data, "Sequence_CSF1R_Fs.csv")
   
 InferenceRs %>%
   map(as.data.frame) %>%
   bind_rows(.id = "Origin") %>%
   cbind(., start = 0, end = 290) -> data
-  colnames(data) <- c("Origin", "Sequence", "Start", "End")
-  write.csv(data, "Sequence_CSF1R_Rs.csv")
+  
+colnames(data) <- c("Origin", "Sequence", "Start", "End")
+write.csv(data, "Sequence_CSF1R_Rs.csv")
   
 #Great! Now bind these into a list and make it just one pipe
 ```
