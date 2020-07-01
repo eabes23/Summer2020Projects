@@ -23,125 +23,114 @@ For now, use their data with 300bp reads as example data, it is similar enough t
 Experiment: Use error prone DNA polymerase to amplify parts of CSF1R gene with random mutations.
 Goals of Analysis: Obtain the mutation rate, and the uniformity of the mutation rate across a string of DNA read.
 
+Good luck!
+
 ```{r setup, include=FALSE}
-library(dada2); packageVersion("dada2")
+library(dada2)
 library(tidyverse)
 library(Biostrings) 
-#don't include the install code in a notebook, instead just run it once in the console
 ```
 
+
 ```{r}
-#"/Users/ethan_23/Documents/DNA_Seq_Data/" -> path #I use left to right flow only for the output of pipes
-path <- "/Users/grahampeet/Desktop/Bennett\ Lab/Bennett-Projects/epPCR_example_data/"
+path <- "/Users/grahampeet/Downloads/MiSeq_SOP/"
+#I'm using just two files from the example data used by the dada tutorial, it's a lot faster to work with.
 
-fnFs <- sort(list.files(path, pattern = "_R1_001.fastq", full.names = TRUE))
-fnRs <- sort(list.files(path, pattern = "_R2_001.fastq", full.names = TRUE))
-  sample.names <- sapply(
-    strsplit(
-      basename(fnFs), "_"), `[`, 1)
+  fnFs <- sort(list.files(path, pattern="_R1_001.fastq", full.names = TRUE))
+  fnRs <- sort(list.files(path, pattern="_R2_001.fastq", full.names = TRUE))
+  sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1)
+  plotQualityProfile(fnFs[1:2])
+  plotQualityProfile(fnRs[1:2])
 
-plotQualityProfile(fnFs[1:2])
-plotQualityProfile(fnRs[1:2])
 ```
 
 ```{r}
 path2 <- "/Users/grahampeet/Desktop/CSF1R_Seq"
 
-filtFs <- file.path(path2, "filtered", paste0(sample.names, "_F_filt.fastq.gz")) 
+filtFs <- file.path(path2, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
 filtRs <- file.path(path2, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
-
 names(filtFs) <- sample.names
 names(filtRs) <- sample.names
 
 #Here we have a function that filters outlying reads and can truncate the region of the genome to exclude regions where the data has poor quality.
-out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, 
-                     #truncLen = c(0, 0),
-                     #maxN = 0, default
-                     #maxEE = c(Inf, Inf), 
-                     #truncQ = 2, 
-                     #rm.phix = T,
-                     #compress = T, remove all defults
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs,
                      multithread = T)
-head(out) 
-
-#something to consider doing in cases like this is to find a way to create a small but representative sample of the data so you can write/debug without waiting for your code to run
+head(out)
 ```
 
 ```{r}
+learnErrors(filtFs, multithread=TRUE) %>%
+  dada(filtFs, err=., multithread=TRUE) %>%
+  plotErrors(nominalQ=TRUE)
+
+learnErrors(filtRs, multithread=TRUE) %>%
+  dada(filtRs, err=., multithread=TRUE) %>%
+  plotErrors(nominalQ=TRUE)
+
 errF <- learnErrors(filtFs, multithread = T)
 errR <- learnErrors(filtRs, multithread = T)
 
-InferenceFs <- dada(filtFs, err = errF, multithread = T)
-InferenceRs <- dada(filtRs, err = errR, multithread = T)
-
-plotErrors(errF, nominalQ = T)
-plotErrors(errR, nominalQ = T)
+InferenceFs <- dada(filtFs, err=errF, multithread=TRUE)
+InferenceRs <- dada(filtRs, err=errR, multithread=TRUE)
 
 InferenceFs[[1]]
 
-#You know what I'm gonna say...try to turn this whole first portion into a piped operation. You may need 2 pipes or something. That's fine of course. You can use purrr::walk to print your plots without breaking the pipe
-
-#I think you will want to merge the paired reads before moving forward
+#Combine paired reads here before proceeding
 ```
 
 
 ```{r}
 InferenceFs %>%
-  map(as.data.frame) %>%
-  bind_rows(.id = "Origin") %>%
-  cbind(., start = 0, end = 290) -> data
-  
-colnames(data) <- c("Origin", "Sequence", "Start", "End")
-write.csv(data, "Sequence_CSF1R_Fs.csv")
-  
-InferenceRs %>%
-  map(as.data.frame) %>%
-  bind_rows(.id = "Origin") %>%
-  cbind(., start = 0, end = 290) -> data
-  
-colnames(data) <- c("Origin", "Sequence", "Start", "End")
-write.csv(data, "Sequence_CSF1R_Rs.csv")
-  
-#Great! Now bind these into a list and make it just one pipe
+  makeSequenceTable() %>% 
+  t() %>%
+  as_tibble(rownames = "Sequence") -> GP_testing
+
+#use this function, I couldn't make your old code run without a stack overflow error
+head(GP_testing)
 ```
 
 
-
-```{r}
-df300_Fs = read_csv("Sequence_CSF1R_Fs.csv")
-df300_Rs = read_csv("Sequence_CSF1R_Rs.csv")
-
-get_mut <- function(seq, ref_seq) {
-  for (i in 1:str_length(ref_seq)) {
-    x <- substr(ref_seq, i, i)
-    y <- substr(seq, i, i)
-      if (x != y) {
-        ans <- paste(toString(i), ":", x, ">", y, sep = "")
-        return(ans)}
+```{r GP Functions}
+#This function takes strings that have already been split into vectors
+mutfinderGP <- function(test_seq, ref_seq) {
+  if (length(test_seq) == length(ref_seq)) { #needs to be same length to analyze
+    if (test_seq == ref_seq) { #check if WT
+        return(test_seq) #code to return current line
+      else {# find SNPs 
+        return(map2(test_seq, ref_seq, list) %>%
+                 imap(~ if((.[[1]] != .[[2]])){paste(.y, .[[2]], ">", .[[1]], sep="")}) %>%
+                 unlist())
+      } 
+      else { 
+        return("indel")
+      }
+    } 
   }
 }
 
-mut_finder <- function(seq, ref_seq) {
-  if (str_length(seq) == str_length(ref_seq)) {
-    if (seq == ref_seq) {
-      return(ref_seq)}
-    else { 
-      return(get_mut(seq, ref_seq))}
-  }
-}
+
+######This code only for testing
+test_seq <- unlist(str_split("ATGG", pattern = ""))
+ref_seq <- unlist(str_split("ATCA", pattern = ""))
+
+map2(test_seq, ref_seq, list) %>%
+  imap(~ if((.[[1]] != .[[2]])){paste(.y, .[[2]], ">", .[[1]], sep="")}) %>%
+  unlist()
 
 ```
 
 
 ```{r}
-df300_Fs[1, "Sequence"] %>%
-  toString(first_seq) %>%
-  as.matrix(strsplit("")) -> refseq_split
+#This code isn't tested, but should do the right thing.
+df <- GP_testing
+ref_seq <- character(read_csv("ref_seq_300.csv")) #or as fasta or whatever
 
-df300_Fs[2, "Sequence"] %>%
-  toString(first_seq) %>%
-  as.matrix(strsplit("")) -> seq_split
+df_freq <- tibble()
 
-mut_finder(seq_split, refseq_split)
+df_freq$muts <- map(df$Sequence, mutfinderGP(df$Sequence, ref_seq))
+df_freq$num <- length(df$muts)
+
+df <- cbind(df, df_freq)
 ```
+
 
